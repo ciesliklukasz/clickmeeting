@@ -5,7 +5,6 @@
 
 # https://docs.docker.com/engine/reference/builder/#understand-how-arg-and-from-interact
 ARG PHP_VERSION=8.1
-ARG CADDY_VERSION=2
 
 # Prod image
 FROM php:${PHP_VERSION}-fpm-alpine AS app_php
@@ -38,13 +37,17 @@ RUN set -eux; \
 		icu-dev \
 		libzip-dev \
 		zlib-dev \
+    	libpng-dev \
 	; \
 	\
 	docker-php-ext-configure zip; \
+    docker-php-ext-configure gd; \
 	docker-php-ext-install -j$(nproc) \
 		intl \
 		zip \
+    	gd \
 	; \
+    docker-php-ext-enable gd; \
 	pecl install \
 		apcu \
 	; \
@@ -107,6 +110,7 @@ RUN set -eux; \
 	mkdir -p var/cache var/log; \
     if [ -f composer.json ]; then \
 		composer dump-autoload --classmap-authoritative --no-dev; \
+		composer dump-autoload --classmap-authoritative --no-dev; \
 		composer dump-env prod; \
 		composer run-script --no-dev post-install-cmd; \
 		chmod +x bin/console; sync; \
@@ -132,20 +136,6 @@ RUN set -eux; \
 
 RUN rm -f .env.local.php
 
-# Build Caddy with the Mercure and Vulcain modules
-FROM caddy:${CADDY_VERSION}-builder-alpine AS app_caddy_builder
-
-RUN xcaddy build \
-	--with github.com/dunglas/mercure \
-	--with github.com/dunglas/mercure/caddy \
-	--with github.com/dunglas/vulcain \
-	--with github.com/dunglas/vulcain/caddy
-
-# Caddy image
-FROM caddy:${CADDY_VERSION} AS app_caddy
-
 WORKDIR /srv/app
 
-COPY --from=app_caddy_builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=app_php /srv/app/public public/
-COPY docker/caddy/Caddyfile /etc/caddy/Caddyfile
